@@ -1,0 +1,47 @@
+{
+    "name": "bronos-pay/woocommerce-plugin",
+    "type": "library",
+    "description": "Accept Bitcoin and 70+ Cryptocurrencies via Bronos Pay in your WooCommerce store",
+    "keywords": [
+        "gateway",
+        "bitcoin",
+        "bronos-pay",
+        "merchant",
+        "woocommerce",
+        "pay",
+        "payment",
+        "purchase"
+    ],
+    "homepage": "https://github.com/bronos-pay/woocommerce-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "BronosPay",
+            "email": "support@bronos.org"
+        }
+    ],
+    "scripts": {
+        "phpcs": "phpcs",
+        "phpcbf": "phpcbf"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "require": {
+        "bronos-pay/bronos-pay-php": "0.1.2"
+    },
+    "require-dev": {
+        "10up/wp_mock": "dev-trunk",
+        "dealerdirect/phpcodesniffer-composer-installer": "^0.7",
+        "phpcompatibility/php-compatibility": "^9.1",
+        "wp-coding-standards/wpcs": "^2.0"
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/bronos-pay/bronos-pay-php"
+        }
+    ]
+}
