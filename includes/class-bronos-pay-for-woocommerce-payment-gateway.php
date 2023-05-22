@@ -216,7 +216,25 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 		$client = $this->init_bronos_pay();
 
 		$description = array();
+		// Create an array to store the data
+        $order_items = [];
+
 		foreach ( $order->get_items() as $item ) {
+			$product = $item->get_product();
+    		$sku = $product->get_sku();
+			$quantity = $item->get_quantity();
+            $price = $item->get_total();
+
+			// Create an object with the data
+			$order_item = [
+				'sku' => $sku,
+				'quantity' => $quantity,
+				'price' => $price,
+			];
+		
+			// Add the object to the array
+			$order_items[] = $order_item;
+
 			$description[] = $item['qty'] . ' × ' . $item['name'];
 		}
 
@@ -224,12 +242,12 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 			'reference_id'         => $order->get_id(),
 			'amount'     => $order->get_total(),
 			'currency'   => $order->get_currency(),
-			// 'receive_currency' => $this->receive_currency,
 			'callback_url'     => trailingslashit( get_bloginfo( 'wpurl' ) ) . '?wc-api=wc_gateway_bronos_pay',
 			'cancel_url'       => $this->get_cancel_order_url( $order ),
 			'success_url'      => add_query_arg( 'order-received', $order->get_id(), add_query_arg( 'key', $order->get_order_key(), $this->get_return_url( $order ) ) ),
 			'title'            => get_bloginfo( 'name', 'raw' ) . ' Order #' . $order->get_id(),
 			'description'      => implode( ', ', $description ),
+			'items'            => $order_items,
 		);
 
 		// if ( 'yes' === $this->get_option( 'purchaser_email_status' ) ) {
@@ -259,7 +277,8 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 	 */
 	public function payment_callback() {
 		$request = $_POST;
-		$order = wc_get_order( sanitize_text_field( $request['reference_id'] ) );
+		
+		$order = wc_get_order( (int) sanitize_text_field( $request['reference_id'] ) );
 
 		if ( ! $this->is_token_valid( $order, sanitize_text_field( $request['_id'] ) ) ) {
 			throw new Exception( 'Bronos Pay callback token does not match' );
@@ -275,7 +294,7 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 
 		// Get payment data from request due to security reason.
 		$client = $this->init_bronos_pay();
-		$bp_order = $client->order->get( (int) sanitize_key( $request['_id'] ) );
+		$bp_order = $client->order->get( sanitize_key( $request['_id'] ) );
 		if ( ! $bp_order || $order->get_id() !== (int) $bp_order->reference_id ) {
 			throw new Exception( 'Bronos Pay Order #' . $order->get_id() . ' does not exists.' );
 		}
@@ -289,7 +308,7 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 		}
 
 		switch ( $callback_order_status ) {
-			case 'paid':
+			case 'Symbol(completed)':
 				if ( ! $this->is_order_paid_status_valid( $order, $bp_order->amount ) ) {
 					throw new Exception( 'Bronos Pay Order #' . $order->get_id() . ' amounts do not match' );
 				}
@@ -300,8 +319,8 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 				$order->add_order_note( __( 'Payment is confirmed on the network, and has been credited to the merchant. Purchased goods/services can be securely delivered to the buyer.', 'bronos-pay' ) );
 				$order->payment_complete();
 
-				$wc_expired_status = $order_statuses['expired'];
-				$wc_canceled_status = $order_statuses['cancelled'];
+				$wc_expired_status = $order_statuses['Symbol(expired)'];
+				$wc_canceled_status = $order_statuses['Symbol(cancelled)'];
 
 				if ( 'processing' === $order->status && ( $status_was === $wc_expired_status || $status_was === $wc_canceled_status ) ) {
 					WC()->mailer()->emails['WC_Email_Customer_Processing_Order']->trigger( $order->get_id() );
@@ -310,23 +329,23 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 					WC()->mailer()->emails['WC_Email_New_Order']->trigger( $order->get_id() );
 				}
 				break;
-			case 'confirmed':
+			case 'Symbol(confirmed)':
 				$this->handle_order_status( $order, $wc_order_status );
 				$order->add_order_note( __( 'Shopper transferred the payment for the invoice. Awaiting blockchain network confirmation.', 'bronos-pay' ) );
 				break;
-			case 'invalid':
+			case 'Symbol(invalid)':
 				$this->handle_order_status( $order, $wc_order_status );
 				$order->add_order_note( __( 'Payment rejected by the network or did not confirm within 7 days.', 'bronos-pay' ) );
 				break;
-			case 'expired':
+			case 'Symbol(expired)':
 				$this->handle_order_status( $order, $wc_order_status );
 				$order->add_order_note( __( 'Buyer did not pay within the required time and the invoice expired.', 'bronos-pay' ) );
 				break;
-			case 'cancelled':
+			case 'Symbol(cancelled)':
 				$this->handle_order_status( $order, $wc_order_status );
 				$order->add_order_note( __( 'Buyer canceled the invoice.', 'bronos-pay' ) );
 				break;
-			case 'refunded':
+			case 'Symbol(refunded)':
 				$this->handle_order_status( $order, $wc_order_status );
 				$order->add_order_note( __( 'Payment was refunded to the buyer.', 'bronos-pay' ) );
 				break;
@@ -370,12 +389,12 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 		$wc_statuses = array_merge( $default_status, wc_get_order_statuses() );
 
 		$default_statuses = array(
-			'paid'       => 'wc-processing',
-			'confirmed' => 'ignore',
-			'invalid'    => 'ignore',
-			'expired'    => 'ignore',
-			'cancelled'   => 'ignore',
-			'refunded'   => 'ignore',
+			'Symbol(completed)'       => 'wc-processing',
+			'Symbol(confirmed)' => 'ignore',
+			'Symbol(invalid)'    => 'ignore',
+			'Symbol(expired)'    => 'ignore',
+			'Symbol(cancelled)'   => 'ignore',
+			'Symbol(refunded)'   => 'ignore',
 		);
 
 		?>
@@ -487,12 +506,12 @@ class BronosPay_For_Woocommerce_Payment_Gateway extends WC_Payment_Gateway {
 	 */
 	private function bronos_pay_order_statuses() {
 		return array(
-			'paid'       => 'Paid',
-			'confirmed' => 'Confirming',
-			'invalid'    => 'Invalid',
-			'expired'    => 'Expired',
-			'cancelled'   => 'Canceled',
-			'refunded'   => 'Refunded',
+			'Symbol(completed)'       => 'Paid',
+			'Symbol(confirmed)' => 'Confirming',
+			'Symbol(invalid)'    => 'Invalid',
+			'Symbol(expired)'    => 'Expired',
+			'Symbol(cancelled)'   => 'Canceled',
+			'Symbol(refunded)'   => 'Refunded',
 		);
 	}
 
